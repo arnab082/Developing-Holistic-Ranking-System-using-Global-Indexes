@@ -1,0 +1,157 @@
+---
+title: "JCOMP - Visualization"
+author: "Soham Kumar 20BAI1167, Arnab Mondal 20BCE1294, Saptarshi Mukherjee 20BCE1719"
+date: "2023-03-30"
+output: html_document
+---
+------------------------------------------------------------------------
+
+## Preparing our final dataset
+
+------------------------------------------------------------------------
+```{r}
+data<-read.csv("/home/soham/Downloads/holistic.csv")
+cluster<-read.csv("/home/soham/Downloads/labels.csv")
+data <- merge(data, cluster, by = "X", all=TRUE)
+rownames(data)<-data$X
+data$X<-NULL
+colnames(data)[39] <- "Category"
+```
+
+------------------------------------------------------------------------
+
+## Quantitative Analysis of our data
+
+------------------------------------------------------------------------
+
+
+
+```{r}
+View(data)
+summary(data)
+str(data)
+```
+
+------------------------------------------------------------------------
+
+## Qualitative Analysis of our data
+
+------------------------------------------------------------------------
+
+```{r}
+library(fastICA)
+library(ggplot2)
+library(cluster)
+library(dplyr)
+dta<-select(data,-c("Score","Category"))
+my_ica <- fastICA(dta, n.comp = 2)
+independent_components <- my_ica$S
+df <- data.frame(independent_components , cluster = as.factor(data$Category))
+ggplot(df, aes(x = independent_components[,1], y = independent_components[,2], color = cluster)) +
+  geom_point() +
+  xlab("Independent Component 1") +
+  ylab("Independent Component 2") +
+  ggtitle("ICA Plot with Cluster Labels")
+```
+
+
+```{r}
+table1<-table(data$Category)
+my_pct_table <- prop.table(table1) * 100
+my_data <- data.frame(labels = names(my_pct_table), values = my_pct_table)
+my_plot <- ggplot(my_data, aes(x = "", y = values.Freq, fill = labels)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  guides(fill = guide_legend(title = "Categories")) +
+  geom_text(aes(label = paste0(round(values.Freq), "%")),position = position_stack(vjust = 0.5), 
+            size = 4, color = "white") +
+  ggtitle("Composition of categories identified based on various regions of the world") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Display plot
+print(my_plot)
+
+```
+
+
+```{r}
+library(dplyr)
+library(ggmap)
+map.world <- map_data("world")
+data$Country<-rownames(data)
+map.world_joined <- left_join(map.world, data, by = c('region' = 'Country'))
+
+# Plot the world map with cluster information
+ggplot() +
+  geom_polygon(data = map.world_joined, aes(x = long, y = lat, group = group, fill=Category, color=Category)) +
+  labs(title = "Overall Progress Score of various regions of the world",
+       x = NULL, y = NULL) +
+  coord_equal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_blank(),
+        plot.title = element_text(hjust = 0.5)
+  )
+```
+
+```{r}
+data$Country<-NULL
+categories<-as.factor(data$Category)
+ggplot(data,aes(x = HDI.Score,fill = categories)) + 
+geom_density(alpha = 0.3) +
+ggtitle("Density plot of HDI scores in various categories") +
+xlim(0.25, 1.25) +
+theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+data$Country<-NULL
+categories<-as.factor(data$Category)
+ggplot(data,aes(x = Global.Innovation.Score,fill = categories)) + 
+geom_density(alpha = 0.3) +
+ggtitle("Density plot of Global Innovation scores in various categories") +
+xlim(0, 80) +
+theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+categories<-as.factor(data$Category)
+ggplot(data,aes(x = Social.Progress.Score,fill = categories)) + 
+geom_density(alpha = 0.3) +
+ggtitle("Density plot of Social Progress scores in various categories") +
+xlim(0, 150) +
+theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r}
+categories<-as.factor(data$Category)
+ggplot(data,aes(x = Score,fill = categories)) + 
+geom_density(alpha = 0.3) +
+xlim(-3, 4) +
+ggtitle("Density plot of overall progress scores in various categories") +
+theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+correlation<-cor(as.matrix(data))[,'Category']
+correlation[correlation>=0.5]
+```
+
+```{r}
+correlation<-cor(as.matrix(data))[,'PC1']
+correlation[correlation>=0.5]
+```
+
+```{r}
+correlation<-cor(as.matrix(data))[,'PC4']
+correlation[correlation>=0.5]
+```
+```{r}
+correlation<-cor(as.matrix(data))[,'PC32']
+correlation[correlation>=0.5]
+```

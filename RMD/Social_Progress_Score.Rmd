@@ -1,0 +1,210 @@
+---
+title: "JCOMP - Social Progress Score"
+author: "Soham Kumar 20BAI1167, Arnab Mondal 20BCE1294, Saptarshi Mukherjee 20BCE1719"
+date: "2023-03-30"
+output: html_document
+---
+
+------------------------------------------------------------------------
+
+## Loading and viewing Human Development Score Dataset
+
+------------------------------------------------------------------------
+```{r}
+rm(list = ls())
+data<-read.csv("/home/soham/Downloads/social_progress.csv")
+rownames(data)<-data$country
+data$country <- NULL
+library(plyr)
+data$Country <- as.character(mapvalues(rownames(data), 
+                                                      from = c("United Kingdom","United States", "Antigua and Barbuda", "Korea. Republic of","Czechia","Trinidad and Tobago","Trinidad and Tobago","Republic of North Macedonia","Cabo Verde","Gambia. The","West Bank and Gaza","Côte d'Ivoire","Eswatini","Congo. Republic of","Congo. Democratic Republic of"),
+                                                      to = c("UK", "USA", "Antigua","South Korea","Czech Republic","Trinidad","Tobago","North Macedonia","Cape Verde","Gambia","West Bank and Gaza","Ivory Coast","Swaziland","Republic of Congo","Democratic Republic of the Congo")))
+rownames(data)<-data$Country
+unique(rownames(data))
+library(dplyr)
+data = select(data,-c('spi_rank'))
+head(data)
+summary(data)
+```
+------------------------------------------------------------------------
+
+## Remvoing Outliers
+
+------------------------------------------------------------------------
+```{r}
+a <- colnames(data)[1 : 16] 
+par(mfrow = c(2,2))    
+for (i in 1:length(a)){ 
+  sub = data[a[i]][,1]
+  boxplot(sub, main = paste("Box. of", a[i], sep = " "), xlab = a[i])
+  x <- data[a[i]][,1]
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = T)
+  caps <- quantile(x, probs=c(.01, .99), na.rm = T)
+  H <- 1.5 * IQR(x, na.rm = T)
+  x[x < (qnt[1] - H)] <- caps[1]
+  x[x > (qnt[2] + H)] <- caps[2]
+  data[a[i]][,1] <- x
+  boxplot(data[a[i]][,1], main = paste("New Box. of", a[i], sep = " "), xlab = a[i])
+}
+```
+------------------------------------------------------------------------
+
+## Checking for Normality
+
+------------------------------------------------------------------------
+```{r}
+a <- colnames(data)[1:16] 
+par(mfrow = c(4, 4))    
+for (i in 1:length(a)){ 
+  sub = data[a[i]][,1]   
+  
+  hist(sub, main = paste("Hist. of", a[i], sep = " "), xlab = a[i])
+}
+par(mfrow = c(4, 4)) 
+for (i in 1:length(a)){ 
+  sub = data[a[i]][,1]   
+  
+  qqnorm(sub, main = paste("Q-Q Plot of", a[i], sep = " "))
+  qqline(sub)
+  if (i == 1) {
+    s.t <- shapiro.test(sub)
+  } else {
+    s.t <- rbind(s.t, shapiro.test(sub))
+  }
+}
+
+s.t <- s.t[, 1:2]
+s.t <- cbind(a, s.t)
+s.t[s.t[,3] >0.05,]
+```
+------------------------------------------------------------------------
+
+## Correlation Analysis
+
+------------------------------------------------------------------------
+```{r}
+par(mfrow = c(1, 1)) 
+dta<-data[1:16]
+library(corrplot)
+corrplot(cor(as.matrix(dta)),method = 'number')
+library(dplyr)
+dta = select(dta,-c('spi_score'))
+plot(hclust(as.dist(1 - cor(dta))))
+```
+------------------------------------------------------------------------
+
+## PCA
+
+------------------------------------------------------------------------
+```{r}
+my_pca <- prcomp(dta, scale = TRUE, center = TRUE, retx = T, rank. = 5)
+summary(my_pca)
+#my_pca$x
+my_pca.var <- my_pca$sdev ^ 2
+my_pca.var
+propve <- my_pca.var / sum(my_pca.var)
+propve
+plot(propve, xlab = "principal component",
+     ylab = "Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b",
+     main = "Scree Plot")
+plot(cumsum(propve),
+     xlab = "Principal Component",
+     ylab = "Cumulative Proportion of Variance Explained",
+     ylim = c(0, 1), type = "b")
+which(cumsum(propve) >= 0.9)[1]
+
+my_pca <- prcomp(dta, scale = TRUE, center = TRUE, rank. = 3)
+my_pca$rotation<- -1*my_pca$rotation
+my_pca$x <- -1*my_pca$x
+biplot(my_pca, scale = 0)
+
+
+library(factoextra)
+# Eigenvalues
+eig.val <- get_eigenvalue(my_pca)
+eig.val
+
+# Results for Variables
+res.var <- get_pca_var(my_pca)
+res.var$coord          # Coordinates
+res.var$contrib        # Contributions to the PCs
+res.var$cos2           # Quality of representation 
+# Results for individuals
+res.ind <- get_pca_ind(my_pca)
+res.ind$coord          # Coordinates
+res.ind$contrib        # Contributions to the PCs
+res.ind$cos2           # Quality of representation 
+
+spi_score<-data$spi_score
+dta<-data.frame(my_pca$x,spi_score=spi_score)
+head(dta)
+
+```
+------------------------------------------------------------------------
+
+## Clustering
+
+------------------------------------------------------------------------
+```{r}
+# Load the NbClust library
+library(NbClust)
+
+# Perform clustering using the NbClust function
+nbc <- NbClust(data[1:7], distance="manhattan", min.nc=2, max.nc=30, method="ward.D", index='all')
+
+
+
+# Load the cluster and factoextra libraries
+library(ggplot2)
+library(cluster)
+library(factoextra)
+
+# Set the seed for reproducibility
+set.seed(4653)
+
+
+# Perform PAM clustering with 2 clusters
+pamK3 <- pam(data[1:7], diss = FALSE, k = 2, keep.data = TRUE)
+
+
+
+# Plot the silhouette plot to visualize the cluster assignments
+fviz_silhouette(pamK3)
+
+# Add the cluster assignments to the data as a factor
+data$cluster <- as.factor(pamK3$clustering)
+
+# Plot a PCA plot with the individual observations colored by cluster
+fviz_pca_ind(my_pca, label = "none", habillage = data$cluster,
+             palette = c("#00AFBB", "#E7B800", "#FC4E07", "#7CAE00", "#C77CFF", "#00BFC4"),
+             addEllipses = TRUE)
+
+
+
+# Load the required libraries for plotting
+library(ggmap)
+
+# Load world map data
+map.world <- map_data("world")
+
+# Join map data with data to add cluster information
+library(dplyr)
+map.world_joined <- left_join(map.world, data, by = c('region' = 'Country'))
+
+# Plot the world map with cluster information
+ggplot() +
+  geom_polygon(data = map.world_joined, aes(x = long, y = lat, group = group, fill=cluster, color=cluster)) +
+  labs(title = "Applied Clustering Social Progress Index",
+       x = NULL, y = NULL) +
+  coord_equal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks = element_blank(),
+        panel.background = element_blank()
+  )
+
+
+```

@@ -1,0 +1,316 @@
+---
+title: "JCOMP"
+author: "Soham Kumar"
+date: "2023-03-29"
+output: html_document
+---
+------------------------------------------------------------------------
+
+## Reading the 3 datasets and merge
+
+------------------------------------------------------------------------
+```{r}
+rm(list = ls())
+data1<-read.csv("/home/soham/Downloads/hi.csv")
+data2<-read.csv("/home/soham/Downloads/gii.csv")
+data3<-read.csv("/home/soham/Downloads/spi.csv")
+data <- merge(merge(data1, data2, by = "X", all=TRUE), data3, by = "X",all=TRUE)
+head(data)
+```
+------------------------------------------------------------------------
+
+## Removing Null Values 
+
+------------------------------------------------------------------------
+
+```{r}
+sum(is.na(data))
+colnames(data)<-c("country","PC1","PC2","PC3","HDI.Score","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20","PC21",
+                  "PC22","PC23","PC24","PC25","PC26","PC27","PC28","PC29","PC30","PC31","Global.Innovation.Score","PC32","PC33","PC34","Social.Progress.Score")
+summary(data)
+library(dplyr)
+library(mice)
+imp1 <- mice(data, method = "norm.predict")
+new_data1 <- complete(imp1)
+imp2 <- mice(data, method = "pmm")
+new_data2 <- complete(imp2)
+
+imp3 <- mice(data, method = "cart")
+new_data3 <- complete(imp3)
+
+
+model<-lm(Social.Progress.Score~PC32+PC33+PC34,data=new_data1)
+for (i in 1:length(new_data1$Social.Progress.Score)) {
+  if (is.na(new_data1$Social.Progress.Score[i])) {
+    new_data1$Social.Progress.Score[i] <- predict(model, newdata = new_data1[i,])
+  }
+}
+
+model<-lm(Social.Progress.Score~PC32+PC33+PC34,data=new_data2)
+for (i in 1:length(new_data2$Social.Progress.Score)) {
+  if (is.na(new_data2$Social.Progress.Score[i])) {
+    new_data2$Social.Progress.Score[i] <- predict(model, newdata = new_data2[i,])
+  }
+}
+
+model<-lm(Social.Progress.Score~PC32+PC33+PC34,data=new_data3)
+for (i in 1:length(new_data3$Social.Progress.Score)) {
+  if (is.na(new_data3$Social.Progress.Score[i])) {
+    new_data3$Social.Progress.Score[i] <- predict(model, newdata = new_data3[i,])
+  }
+}
+
+summary(data)
+summary(new_data1)
+summary(new_data2)
+summary(new_data3)
+```
+
+------------------------------------------------------------------------
+
+## Distribution of various scores
+
+------------------------------------------------------------------------
+
+```{r}
+hist(new_data1$Social.Progress.Score)
+hist(new_data2$Social.Progress.Score)
+hist(new_data3$Social.Progress.Score)
+
+hist(new_data1$HDI.Score)
+hist(new_data2$HDI.Score)
+hist(new_data3$HDI.Score)
+
+hist(new_data1$Global.Innovation.Score)
+hist(new_data2$Global.Innovation.Score)
+hist(new_data3$Global.Innovation.Score)
+
+rownames(new_data1)<-new_data1$country
+new_data1$country<-NULL
+rownames(new_data2)<-new_data2$country
+new_data2$country<-NULL
+rownames(new_data3)<-new_data3$country
+new_data3$country<-NULL
+
+new_data1$Score <-scale(new_data1$Social.Progress.Score)+scale(new_data1$Global.Innovation.Score)+scale(new_data1$HDI.Score)
+new_data2$Score <-scale(new_data2$Social.Progress.Score)+scale(new_data2$Global.Innovation.Score)+scale(new_data2$HDI.Score)
+new_data3$Score <-scale(new_data3$Social.Progress.Score)+scale(new_data3$Global.Innovation.Score)+scale(new_data3$HDI.Score)
+```
+------------------------------------------------------------------------
+
+## Selecting Dataset with best normality of scores
+
+------------------------------------------------------------------------
+
+```{r}
+s.t1 <- shapiro.test(new_data1$Score)
+s.t1
+s.t2 <- shapiro.test(new_data2$Score)
+s.t2
+s.t3 <- shapiro.test(new_data3$Score)
+s.t3
+new_data3<-read.csv("/home/soham/Downloads/holistic.csv")
+data<-new_data3
+data$HDI.Score<-NULL
+data$Global.Innovation.Score<-NULL
+data$Social.Progress.Score<-NULL
+rownames(data)<-data$X
+data$X<-NULL
+dta = select(data,-c('Score'))
+```
+------------------------------------------------------------------------
+
+## Independent Component Analysis - Dimensionality Reduction
+
+------------------------------------------------------------------------
+
+```{r}
+library(fastICA)
+library(ggplot2)
+library(cluster)
+library(factoextra)
+library(fpc)
+# Perform ICA using the optimal number of components
+my_ica <- fastICA(dta, n.comp = 2)
+independent_components <- my_ica$S
+set.seed(123)
+# Standardize the data
+independent_components_scaled <- scale(independent_components)
+```
+
+------------------------------------------------------------------------
+
+## K-Means
+
+------------------------------------------------------------------------
+
+```{r}
+# Determine the optimal number of clusters using elbow method
+wss <- (nrow(independent_components_scaled)-1)*sum(apply(independent_components_scaled,2,var))
+for(i in 1:10) wss[i] <- sum(kmeans(independent_components_scaled, centers=i)$withinss)
+par(mfrow = c(1, 1))  
+plot(1:10, wss, type="b", xlab="Number of Clusters", ylab="Within groups sum of squares")
+
+score<-c()
+for(i in 2:10)
+{
+  # Cluster the data using K-Means 
+  kmeans_fit <- kmeans(independent_components_scaled, centers=i)
+  # Visualize the clusters
+  silhouette_scores <- silhouette(kmeans_fit$cluster, dist(independent_components_scaled))
+  print(paste(i,mean(silhouette_scores[,3]),sep=":"))
+  score<-c(score,mean(silhouette_scores[,3]))
+}
+num<-which.max(score)
+num
+kmeans_fit <- kmeans(independent_components_scaled, centers=num+1)
+silhouette_scores <- silhouette(kmeans_fit$cluster, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,kmeans_fit$cluster, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+------------------------------------------------------------------------
+
+## Hierarchical Clustering - Average Linkage
+
+------------------------------------------------------------------------
+
+
+```{r}
+# Calculate the distance matrix
+dist_matrix <- dist(independent_components_scaled)
+
+# Perform hierarchical clustering using complete linkage method
+hc_average <- hclust(dist_matrix, method="average")
+
+# Visualize the dendrogram
+plot(hc_average)
+
+# Cut the dendrogram at a certain height to get clusters
+cluster_labels <- cutree(hc_average, h=2.5)
+silhouette_scores <- silhouette(cluster_labels, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,cluster_labels, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+
+------------------------------------------------------------------------
+
+## Hierarchical Clustering - Complete  Linkage
+
+------------------------------------------------------------------------
+
+```{r}
+# Calculate the distance matrix
+dist_matrix <- dist(independent_components_scaled)
+
+# Perform hierarchical clustering using complete linkage method
+hc_complete <- hclust(dist_matrix, method="complete")
+
+# Visualize the dendrogram
+plot(hc_complete)
+
+# Cut the dendrogram at a certain height to get clusters
+cluster_labels <- cutree(hc_complete, h=5)
+silhouette_scores <- silhouette(cluster_labels, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,cluster_labels, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+
+------------------------------------------------------------------------
+
+## K - Medoid Clustering
+
+------------------------------------------------------------------------
+
+```{r}
+# Perform PAM clustering 
+score<-c()
+for(i in 2:10)
+{
+  pamK3 <- pam(independent_components_scaled, diss = FALSE, k = i, keep.data = TRUE)
+  silhouette_scores <- silhouette(pamK3$clustering, dist(independent_components_scaled))
+  print(paste(i,mean(silhouette_scores[,3]),sep=":"))
+  score<-c(score,mean(silhouette_scores[,3]))
+}
+num<-which.max(score)
+num
+pamK3 <- pam(independent_components_scaled, diss = FALSE, k = num+1, keep.data = TRUE)
+silhouette_scores <- silhouette(pamK3$clustering, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,pamK3$clustering, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+
+------------------------------------------------------------------------
+
+## DBSCAN
+
+------------------------------------------------------------------------
+```{r}
+# Perform DBSCAN clustering with eps=0.5 and minPts=5
+dbscan_res <- dbscan(independent_components_scaled, eps = 0.4, MinPts = 8)
+
+# Print the clustering results
+print(dbscan_res)
+
+# Plot the clustering results
+cluster_labels <- dbscan_res$cluster
+silhouette_scores <- silhouette(cluster_labels, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,cluster_labels, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+
+------------------------------------------------------------------------
+
+## GMM Clustering
+
+------------------------------------------------------------------------
+```{r}
+library(mclust)
+# Fit a GMM 
+score<-c()
+for(i in 2:10)
+{
+  gmm_res <- Mclust(independent_components_scaled, G=i)
+  # Extract the cluster labels
+  cluster_labels <- gmm_res$classification
+  silhouette_scores <- silhouette(cluster_labels, dist(independent_components_scaled))
+  print(paste(i,mean(silhouette_scores[,3]),sep=":"))
+  score<-c(score,mean(silhouette_scores[,3]))
+}
+num<-which.max(score)
+num
+gmm_res <- Mclust(independent_components_scaled, G=num+1)
+cluster_labels <- gmm_res$classification
+silhouette_scores <- silhouette(cluster_labels, dist(independent_components_scaled))
+mean(silhouette_scores[,3])
+clusplot(independent_components_scaled,cluster_labels, color=TRUE, shade=TRUE, labels=1, lines=0)
+```
+------------------------------------------------------------------------
+
+## Fuzzy Clustering
+
+------------------------------------------------------------------------
+```{r}
+library(fclust)
+library(ppclust)
+# Perform fuzzy clustering 
+score<-c()
+for(i in 2:10)
+{
+  res.fcm <- fcm(independent_components_scaled, centers=i)
+  # Extract the cluster labels
+  cluster_labels <- res.fcm$cluster
+  # Print the cluster labels
+  silhouette_scores <- silhouette(cluster_labels, dist(independent_components))
+  print(paste(i,mean(silhouette_scores[,3]),sep=":"))
+  score<-c(score,mean(silhouette_scores[,3]))
+}
+num<-which.max(score)
+res.fcm <- fcm(independent_components_scaled, centers=num+1)
+cluster_labels <- res.fcm$cluster
+summary(res.fcm)
+silhouette_scores <- silhouette(cluster_labels, dist(independent_components))
+mean(silhouette_scores[,3])
+# Plot the cluster
+clusplot(independent_components_scaled,cluster_labels, color=TRUE, shade=TRUE, labels=1, lines=0)
+
+```
