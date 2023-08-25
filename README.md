@@ -14,7 +14,6 @@ Countries have long been classified as developed, developing, or underdeveloped 
 - Null Value Removal
 - Finding final score
 - Voting based on final score
-- Independent Component Analysis(ICA)
 - CLustering
 - Visualisation
 ## Screenshots:
